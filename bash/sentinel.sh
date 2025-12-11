@@ -30,8 +30,8 @@ END {
 }
 
 system_load_avg() {
-    load_avg=$(grep -o '^[0-9.]\+' /proc/loadavg)
-    echo "${load_avg}"
+    load_avg=$(cut -d ' ' -f 1 /proc/loadavg)
+    printf "%.2f" "${load_avg}"
 }
 
 disk_io_performance() {
