@@ -96,8 +96,8 @@ BEGIN {
       avg_write_latency = (delta_write > 0 ? delta_write_time / delta_write : 0)
       disk_utilization = (delta_io_time / (interval * 1000)) * 100
 
-      printf "Read IOPS: %.2f\n", read_iops
-      printf "Write IOPS: %.2f\n", write_iops
+      printf "Read IOPS: %.2f IO/s\n", read_iops
+      printf "Write IOPS: %.2f IO/s\n", write_iops
       printf "Read Throughput: %.2f bytes/s\n", read_throughput
       printf "Write Throughput: %.2f bytes/s\n", write_throughput
       printf "Average Read Latency: %.2f ms\n", avg_read_latency
@@ -106,7 +106,69 @@ BEGIN {
 }'
 }
 
+network_metrics() {
+    # Contents of /proc/diskstats
+    # 1. interface - name of the network interface
+    # 2. bytes - receive - total # of bytes received
+    # 3. packets - receive - total # of packets received
+    # 4. errs - receive - total # of receive errors detected by the device driver
+    # 5. drop - receive - total # of packets dropped by the device driver
+    # 6. fifo - receive - # of FIFO buffer errors
+    # 7. frame - recieve - # of packet framing errors
+    # 8. compressed - receive - # of compressed packets received
+    # 9. multicast - receive - # of multicast packets received
+    # 10. bytes - transmit - total # of bytes transmitted
+    # 11. packets - transmit - total # of packets transmitted
+    # 12. errs - transmit - total # of transmit errors detected by the device driver
+    # 13. drop - transmit - total # of packets dropped by the device driver
+    # 14. fifo - transmit - # of FIFO buffer errors
+    # 15. colls - transmit - # of collisions detected on the interface
+    # 16. carrier - recieve - # of carrier losses detected by the device driver
+    # 17. compressed - transmit - # of compressed packets transmitted
+    interface="enp1s0"
+    interval=15
+
+    # awk here checks if the regexp matches (~) `^enp1s0:` with the first value ($1)
+    read -r receive_bytes1 receive_errs1 receive_drops1 transmit_bytes1 transmit_errs1 transmit_drops1 <<< \
+         "$(awk -v i="${interface}" '$1 ~ "^" i ":" {print $2, $4, $5, $10, $12, $13}' /proc/net/dev)"
+
+    sleep ${interval}
+
+    read -r receive_bytes2 receive_errs2 receive_drops2 transmit_bytes2 transmit_errs2 transmit_drops2 <<< \
+         "$(awk -v i="${interface}" '$1 ~ "^" i ":" {print $2, $4, $5, $10, $12, $13}' /proc/net/dev)"
+
+    awk -v receive_bytes1="${receive_bytes1}" -v receive_errs1="${receive_errs1}" -v receive_drops1="${receive_drops1}" \
+        -v receive_bytes2="${receive_bytes2}" -v receive_errs2="${receive_errs2}" -v receive_drops2="${receive_drops2}" \
+        -v transmit_bytes1="${transmit_bytes1}" -v transmit_errs1="${transmit_errs1}" -v transmit_drops1="${transmit_drops1}" \
+        -v transmit_bytes2="${transmit_bytes2}" -v transmit_errs2="${transmit_errs2}" -v transmit_drops2="${transmit_drops2}" \
+        -v interval="${interval}" '
+BEGIN {
+      delta_receive_bytes = receive_bytes2 - receive_bytes1
+      delta_receive_errs = receive_errs2 - receive_errs1
+      delta_receive_drops = receive_drops2 - receive_drops1
+      delta_transmit_bytes = transmit_bytes2 - transmit_bytes1
+      delta_transmit_errs = transmit_errs2 - transmit_errs1
+      delta_transmit_drops = transmit_drops2 - transmit_drops1
+
+      receive_throughput = delta_receive_bytes / interval
+      receive_err_rate = delta_receive_errs / interval
+      receive_drop_rate = delta_receive_drops / interval
+      transmit_throughput = delta_transmit_bytes / interval
+      transmit_err_rate = delta_transmit_errs / interval
+      transmit_drop_rate = delta_transmit_drops / interval
+
+      printf "Receive Throughput: %.2f bytes/s\n", receive_throughput
+      printf "Receive Error Rate: %.2f errors/s\n", receive_err_rate
+      printf "Receive Drop Rate: %.2f drops/s\n", receive_drop_rate
+      printf "Transmit Throughput: %.2f bytes/s\n", transmit_throughput
+      printf "Transmit Error Rate: %.2f errors/s\n", transmit_err_rate
+      printf "Transmit Drop Rate: %.2f drops/s\n", transmit_drop_rate
+}'
+}
+
 echo "Total RAM Usage: $(memory_usage_percentage)%"
 echo "System Load Average: $(system_load_avg)"
 echo "Disk I/O Performance: "
 disk_io_performance
+echo "Network Performance: "
+network_metrics
